@@ -91,6 +91,21 @@ node scripts/dev.mjs --mock  # 연습 모드 → 브라우저에서 http://local
 | `CACHE_OK` | 데이터가 바뀌는 주기에 맞춘 캐시 시간(실시간 측정값은 짧게, 하루 단위 자료는 길게) |
 | `index.html` | `showList`에서 항목을 그리는 부분 |
 
+## 7. 한 줄 방명록 (Supabase)
+
+`/guestbook.html`에서 이름(1~20자)과 한 줄 메시지(1~200자)를 남기면 `api/guestbook.js`가 Supabase 표 `public.guestbook`에 저장합니다.
+
+| 파일 | 역할 |
+|---|---|
+| `supabase/guestbook.sql` | 표, CHECK 제약, RLS(누구나 읽기만), 권한. Supabase SQL Editor에서 한 번 실행합니다 |
+| `api/guestbook.js` | `GET` 최근 20개(공개 키) · `POST` 입력 검사 뒤 저장(서버 전용 secret 키) |
+| `lib/guestbook-validate.js` | 입력 검사 규칙. 함수와 시험이 함께 씁니다 |
+| `guestbook.html` | 불러오는 중 · 글 있음 · 글 없음 · 오류 네 가지 상태와 입력 칸 |
+| `tests/guestbook.test.mjs` | 입력 검사와 키 없음·잘못된 요청 시험(Supabase에 접속하지 않음) |
+
+- 공개 역할(`anon`, `authenticated`)은 `select`만 할 수 있어 브라우저가 Supabase에 직접 글을 쓸 수 없습니다. 쓰기는 함수가 `SUPABASE_SECRET_KEY`로만 합니다.
+- Vercel 환경 변수 `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`가 필요합니다. 로컬에서는 `.env.local`에 같은 이름으로 넣고 `node scripts/dev.mjs` 후 <http://localhost:3000/guestbook.html>을 엽니다.
+
 ## 공식 문서
 
 - 한국천문연구원 특일 정보: https://www.data.go.kr/data/15012690/openapi.do

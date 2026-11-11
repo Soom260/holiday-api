@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>한 줄 방명록 · Supabase 예제</title>
+  <meta name="description" content="이름과 한 줄 메시지를 남기면 Vercel 함수가 Supabase에 저장합니다.">
+  <style>
+    :root {
+      --ink: #172033; --muted: #526173; --line: #d6dee7; --bg: #f4f7fa; --card: #ffffff;
+      --brand: #005596; --teal: #0f766e; --warn-bg: #fff7ed; --warn-line: #fdba74; --warn-ink: #9a3412;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink); line-height: 1.6; word-break: keep-all;
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    }
+    header { background: #122b40; color: #fff; padding: 28px 20px 24px; }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    h1 { margin: 0; font-size: clamp(25px, 5vw, 32px); line-height: 1.3; }
+    header p { margin: 8px 0 0; color: #d7e3ec; }
+    header a { color: #fff; }
+    main { padding: 24px 20px 40px; }
+    form {
+      display: grid; grid-template-columns: 160px 1fr auto; gap: 12px; align-items: end;
+      background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px;
+    }
+    label { display: flex; justify-content: space-between; font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+    .counter { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .counter.over { color: var(--warn-ink); font-weight: 700; }
+    input, button { width: 100%; height: 48px; font: inherit; border-radius: 10px; }
+    input { border: 1px solid #9fb3c4; background: #fff; color: var(--ink); padding: 0 12px; min-width: 0; }
+    input[aria-invalid="true"] { border-color: var(--warn-ink); }
+    button { border: 0; background: var(--brand); color: #fff; font-weight: 700; padding: 0 24px; cursor: pointer; }
+    button:disabled { background: #6f8ca6; cursor: progress; }
+    :focus-visible { outline: 3px solid #f59e0b; outline-offset: 2px; }
+    #form-status { grid-column: 1 / -1; margin: 0; min-height: 0; font-size: 14px; }
+    #form-status:empty { display: none; }
+    #form-status.bad { color: var(--warn-ink); font-weight: 700; }
+    #form-status.good { color: var(--teal); font-weight: 700; }
+    #result { margin-top: 18px; }
+    .panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+    .panel h2 { margin: 0 0 8px; font-size: 20px; line-height: 1.4; }
+    .panel h2, .panel p { overflow-wrap: anywhere; }
+    .list { list-style: none; margin: 8px 0 0; padding: 0; }
+    .list li { display: flex; gap: 14px; align-items: baseline; padding: 12px 0; border-top: 1px solid var(--line); }
+    .list li.new { background: #e6f4f1; }
+    .who { min-width: 120px; max-width: 180px; font-weight: 700; color: var(--brand); overflow-wrap: anywhere; }
+    .msg { flex: 1; overflow-wrap: anywhere; }
+    .when { font-size: 13px; color: var(--muted); white-space: nowrap; }
+    .meta { margin: 14px 0 0; font-size: 14px; color: var(--muted); }
+    .loading { display: flex; align-items: center; gap: 12px; color: var(--muted); }
+    .spinner { flex: none; width: 24px; height: 24px; border: 3px solid #cfe0ee; border-top-color: var(--brand); border-radius: 50%; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+    .empty p { margin: 4px 0; color: var(--muted); }
+    .error { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+    .error p { margin: 6px 0; }
+    .error .hint { color: #7c2d12; font-size: 15px; }
+    .error .code { font-size: 13px; color: #9a3412; }
+    .retry { width: auto; height: 42px; margin-top: 8px; background: #9a3412; }
+    footer { padding: 0 20px 32px; font-size: 13px; color: var(--muted); }
+    @media (max-width: 560px) {
+      form { grid-template-columns: 1fr; }
+      .list li { flex-wrap: wrap; gap: 2px 12px; }
+      .who { min-width: 0; max-width: none; }
+      .msg { flex-basis: 100%; order: 3; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>한 줄 방명록</h1>
+      <p>이름과 한 줄 메시지를 남겨 주세요. 최근 20개가 보입니다. · <a href="/">공휴일 조회로</a></p>
+    </div>
+  </header>
+  <main class="wrap">
+    <form id="write" novalidate>
+      <div>
+        <label for="name">이름 <span class="counter" id="name-count">0/20</span></label>
+        <input id="name" name="name" autocomplete="nickname" maxlength="40" required aria-describedby="form-status">
+      </div>
+      <div>
+        <label for="message">한 줄 메시지 <span class="counter" id="message-count">0/200</span></label>
+        <input id="message" name="message" maxlength="400" required aria-describedby="form-status">
+      </div>
+      <button id="submit" type="submit">남기기</button>
+      <p id="form-status" role="status"></p>
+    </form>
+    <section id="result" aria-live="polite" aria-busy="false"></section>
+  </main>
+  <footer class="wrap">저장소: Supabase · 쓰기는 Vercel 함수(/api/guestbook)만 할 수 있습니다</footer>
+
+  <script>
+    const LIMITS = { name: 20, message: 200 };
+    const form = document.getElementById('write');
+    const inputs = { name: document.getElementById('name'), message: document.getElementById('message') };
+    const counters = { name: document.getElementById('name-count'), message: document.getElementById('message-count') };
+    const submitButton = document.getElementById('submit');
+    const formStatus = document.getElementById('form-status');
+    const result = document.getElementById('result');
+
+    // 작은 도우미: 태그를 만들고 글자는 textContent로 넣습니다(받은 글자를 HTML로 해석하지 않음)
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+    // 서버·DB와 같은 방식(코드포인트)으로 글자 수를 셉니다
+    const count = (text) => [...text.trim()].length;
+    function formatTime(iso) {
+      return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+        .format(new Date(iso));
+    }
+
+    // 네 가지 화면 상태: 불러오는 중 · 글 있음 · 글 없음 · 오류
+    function showLoading() {
+      const panel = el('div', 'panel loading');
+      panel.append(el('span', 'spinner'), el('span', '', '방명록을 불러오는 중입니다…'));
+      result.replaceChildren(panel);
+    }
+    function showList(data, newId) {
+      const panel = el('div', 'panel');
+      panel.append(el('h2', '', `최근 방명록 ${data.count}개`));
+      const list = el('ul', 'list');
+      for (const item of data.items) {
+        const li = el('li', item.id === newId ? 'new' : '');
+        li.append(el('span', 'who', item.name), el('span', 'msg', item.message), el('time', 'when', formatTime(item.createdAt)));
+        li.lastChild.dateTime = item.createdAt;
+        list.append(li);
+      }
+      panel.append(list, el('p', 'meta', `가져온 시각 ${formatTime(data.fetchedAt)}`));
+      result.replaceChildren(panel);
+    }
+    function showEmpty() {
+      const panel = el('div', 'panel empty');
+      panel.append(el('h2', '', '아직 방명록이 없습니다'), el('p', '', '위 칸에 첫 메시지를 남겨 보세요.'));
+      result.replaceChildren(panel);
+    }
+    function showError(message, hint, status) {
+      const panel = el('div', 'panel error');
+      panel.setAttribute('role', 'alert');
+      panel.append(el('h2', '', '방명록을 불러오지 못했습니다'), el('p', '', message));
+      if (hint) panel.append(el('p', 'hint', `확인할 점: ${hint}`));
+      if (status) panel.append(el('p', 'code', `응답 코드 ${status}`));
+      const retry = el('button', 'retry', '다시 시도');
+      retry.type = 'button';
+      retry.addEventListener('click', () => load());
+      panel.append(retry);
+      result.replaceChildren(panel);
+    }
+    function networkMessage() {
+      return location.protocol === 'file:'
+        ? ['이 화면은 함수와 함께 열어야 동작합니다.', 'node scripts/dev.mjs 를 실행하고 http://localhost:3000/guestbook.html 로 엽니다.']
+        : ['서버에 연결하지 못했습니다. 인터넷 연결을 확인하고 다시 시도하세요.', ''];
+    }
+
+    async function load(newId) {
+      result.setAttribute('aria-busy', 'true');
+      if (!newId) showLoading();
+      try {
+        const response = await fetch('/api/guestbook', { cache: 'no-store' });
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data) showError(data?.error || `서버가 ${response.status} 오류로 답했습니다.`, data?.hint, response.status);
+        else if (data.count === 0) showEmpty();
+        else showList(data, newId);
+      } catch {
+        const [message, hint] = networkMessage();
+        showError(message, hint, 0);
+      } finally {
+        result.setAttribute('aria-busy', 'false');
+      }
+    }
+
+    // 입력 검사(화면): 서버도 같은 검사를 다시 하므로 여기서는 빠른 안내용입니다
+    function check(field) {
+      const n = count(inputs[field].value);
+      counters[field].textContent = `${n}/${LIMITS[field]}`;
+      counters[field].classList.toggle('over', n > LIMITS[field]);
+      const label = field === 'name' ? '이름' : '메시지';
+      if (n === 0) return `${label}을(를) 입력해 주세요.`;
+      if (n > LIMITS[field]) return `${label}은(는) ${LIMITS[field]}자 이하로 써 주세요.`;
+      return '';
+    }
+    function setStatus(text, kind) {
+      formStatus.textContent = text;
+      formStatus.className = kind || '';
+    }
+    for (const field of Object.keys(inputs)) {
+      inputs[field].addEventListener('input', () => {
+        const problem = check(field);
+        inputs[field].setAttribute('aria-invalid', String(Boolean(problem) && count(inputs[field].value) > 0));
+        if (formStatus.className === 'good') setStatus('');
+      });
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      for (const field of Object.keys(inputs)) {
+        const problem = check(field);
+        inputs[field].setAttribute('aria-invalid', String(Boolean(problem)));
+        if (problem) { setStatus(problem, 'bad'); inputs[field].focus(); return; }
+      }
+      submitButton.disabled = true;
+      submitButton.textContent = '저장 중…';
+      setStatus('');
+      try {
+        const response = await fetch('/api/guestbook', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: inputs.name.value, message: inputs.message.value }),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data?.item) {
+          setStatus(data?.error || `저장하지 못했습니다. (응답 코드 ${response.status})`, 'bad');
+          if (data?.field && inputs[data.field]) { inputs[data.field].setAttribute('aria-invalid', 'true'); inputs[data.field].focus(); }
+          return;
+        }
+        inputs.message.value = '';
+        check('message');
+        setStatus('남겼습니다. 고맙습니다!', 'good');
+        await load(data.item.id);
+      } catch {
+        setStatus(networkMessage()[0], 'bad');
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = '남기기';
+      }
+    });
+
+    load();
+  </script>
+</body>
+</html>
