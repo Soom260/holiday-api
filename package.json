@@ -1,0 +1,14 @@
+{
+  "name": "vercel-api-project",
+  "private": true,
+  "description": "연·월을 고르면 Vercel 함수가 공공데이터(특일 정보)를 실시간으로 조회하는 수업 예제",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "dev": "node scripts/dev.mjs",
+    "dev:mock": "node scripts/dev.mjs --mock"
+  },
+  "engines": {
+    "node": "24.x"
+  }
+}

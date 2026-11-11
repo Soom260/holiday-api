@@ -1,0 +1,6 @@
+# 인증키가 든 로컬 파일은 저장소에 올리지 않습니다
+.env*
+!.env.example
+.vercel/
+node_modules/
+.DS_Store

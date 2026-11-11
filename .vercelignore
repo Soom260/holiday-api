@@ -1,0 +1,5 @@
+# Vercel에 올리지 않을 파일: 로컬 시험 도구와 설명 파일
+tests
+scripts
+README.md
+.env.example
