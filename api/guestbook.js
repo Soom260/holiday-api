@@ -63,7 +63,8 @@ async function create(request) {
 }
 
 function client(keyName) {
-  const url = (process.env.SUPABASE_URL ?? '').trim();
+  // Data API 화면에서 복사하면 끝에 /rest/v1/ 이 붙어 오므로 떼어 냅니다
+  const url = (process.env.SUPABASE_URL ?? '').trim().replace(/\/+$/, '').replace(/\/rest\/v1$/, '');
   const key = (process.env[keyName] ?? '').trim();
   if (!url || !key) {
     const missing = [!url && 'SUPABASE_URL', !key && keyName].filter(Boolean).join(', ');
@@ -71,6 +72,14 @@ function client(keyName) {
     return {
       error: fail(500, 'NO_KEY', '서버에 Supabase 설정이 없습니다.', {
         hint: `Vercel 프로젝트 Settings → Environment Variables에 ${missing}을(를) 추가한 뒤 다시 배포합니다.`,
+      }),
+    };
+  }
+  if (!/^https:\/\/[^/\s]+$/.test(url)) {
+    console.error('[guestbook] SUPABASE_URL 형식이 올바르지 않습니다.');
+    return {
+      error: fail(500, 'BAD_URL', '서버의 Supabase 주소 설정이 올바르지 않습니다.', {
+        hint: 'SUPABASE_URL은 https://프로젝트ID.supabase.co 형식으로, 뒤에 다른 경로 없이 넣습니다.',
       }),
     };
   }
@@ -85,7 +94,25 @@ function dbError(action, error) {
   if (error.code === '23514') {
     return fail(400, 'BAD_INPUT', '이름은 1~20자, 내용은 1~200자로 써 주세요.');
   }
-  return fail(502, 'DB_ERROR', `방명록을 ${action}하지 못했습니다. 잠시 뒤 다시 시도해 주세요.`);
+  // 고칠 곳을 알려 주는 안내만 붙입니다(키 값·DB 원문은 넣지 않음)
+  return fail(502, 'DB_ERROR', `방명록을 ${action}하지 못했습니다. 잠시 뒤 다시 시도해 주세요.`, {
+    hint: dbHint(error),
+    dbCode: error.code || undefined,
+  });
+}
+
+function dbHint(error) {
+  const code = error.code ?? '';
+  const message = String(error.message ?? '');
+  if (!code && /fetch failed|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|network/i.test(message)) {
+    return 'Supabase 서버에 연결하지 못했습니다. SUPABASE_URL 값(https://프로젝트ID.supabase.co)에 오타가 없는지 확인합니다.';
+  }
+  if (code === 'PGRST301' || code === 'PGRST302' || /api key|jwt|unauthorized/i.test(message)) {
+    return 'Supabase가 키를 거절했습니다. SUPABASE_PUBLISHABLE_KEY·SUPABASE_SECRET_KEY 값과 같은 프로젝트인지 확인합니다.';
+  }
+  if (code === '42501') return '표 권한이 없습니다. supabase/guestbook.sql의 grant 줄이 실행됐는지 확인합니다.';
+  if (code === 'PGRST205' || code === '42P01') return '표 public.guestbook을 찾지 못했습니다. SUPABASE_URL이 표를 만든 프로젝트인지 확인합니다.';
+  return '';
 }
 
 function toEntry(row) {
